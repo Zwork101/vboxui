@@ -28,7 +28,7 @@ class VMList(Screen):
 			summary = {}
 			for name, _, unit, scale, _, _, _, value in zip(*(raw_metrics[key] for key in raw_metrics)):
 
-				logging.info(f"{vm.name}, {name}, {value} / {scale} {unit}")
+				# logging.info(f"{vm.name}, {name}, {value} / {scale} {unit}")
 
 				if name == "CPU/Load/User":
 					vm_pane.metric_cpu_user_load = Metric(value, scale, unit)

@@ -82,8 +82,8 @@ class VM(Container):
 	def compose(self) -> ComposeResult:
 		with Horizontal(classes="instance"):
 			with Vertical(classes="menu"):
-				yield Button("Start VM", variant="success", disabled=self.vbox_health != MachineHealth.RUNNING)
-				yield Button("Stop VM", variant="primary", disabled=self.vbox_health == MachineHealth.RUNNING)
+				yield Button("Start VM", variant="success", disabled=self.vbox_health == MachineHealth.RUNNING, id="start-btn")
+				yield Button("Stop VM", variant="primary", disabled=self.vbox_health != MachineHealth.RUNNING, id='stop-btn')
 				yield Button("VM Settings", variant="warning")
 				yield Button("Take Snapshot", variant="warning")
 				yield Button("Delete VM", variant="error")
@@ -95,8 +95,8 @@ class VM(Container):
 							yield Markdown(f"**Operating System:** {self.vbox_os}")
 							yield Markdown(f"**Health:** {self.vbox_health}")
 						with Vertical():
-							yield Markdown(f"**Test**: test")
-							yield Markdown(f"**Test**: test")
+							yield Markdown(f"**CPU Cores**: {self.vbox_cpu_count}")
+							yield Markdown(f"**Total Memory**: {self.vbox_memory}")
 							yield Markdown(f"**Test**: test")
 					with Horizontal():
 						with Vertical():
@@ -107,6 +107,31 @@ class VM(Container):
 							yield MetricDisplay("Disk Usage", self.metric_disk_used, id="disk-metric")
 							yield MetricDisplay("Network Rx Usage", self.metric_network_rx, id="net-rx-metric")
 							yield MetricDisplay("Network Tx Usage", self.metric_network_tx, id="net-tx-metric")
+
+
+	def on_button_pressed(self, event: Button.Pressed) -> None:
+		logging.info(event.button.id)
+		if event.button.id == "start-btn":
+			self.start_vm()
+		elif event.button.id == "stop-btn":
+			self.stop_vm()
+
+	def start_vm(self):
+		logging.info("Starting VM")
+		self._vbox.start()
+		self.query("#start-btn").only_one(Button).disabled = True
+		self.query("#stop-btn").only_one(Button).disabled = False
+
+	def stop_vm(self):
+		logging.info("Stopping VM")
+		self._vbox.stop()
+		self.query("#start-btn").only_one(Button).disabled = False
+		self.query("#stop-btn").only_one(Button).disabled = True
+
+	def delete_vm(self):
+		self._vbox.delete()
+		if self.parent:
+			self.parent.refresh(layout=True, recompose=True)
 
 	def watch_metric_cpu_user_load(self, metric: Metric):
 		try:

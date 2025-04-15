@@ -82,8 +82,8 @@ class Login(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "login":
-            username = self.query_one("#username").value or getuser()
-            password = self.query_one("#password")
+            username = self.query_one("#username", Input).value or getuser()
+            password = self.query_one("#password", Input)
 
             if not password.value:
                 password.focus()
@@ -92,7 +92,7 @@ class Login(Screen):
                 logging.info(username)
                 logging.info(repr(self.query_one("#username-text").styles))
 
-                err = self.query_one(".err")
+                err = self.query_one(".err", Static)
                 err.styles.visibility = "visible"
                 err.update("Error: Please enter a password")
 
@@ -104,5 +104,5 @@ class Login(Screen):
 
 
         elif event.button.id == "quit":
-            logging.warn("Quitting...")
+            logging.warning("Quitting...")
             exit(0)
