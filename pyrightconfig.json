@@ -1,5 +1,5 @@
 {
-    "venvPath": "/home/zwack/.virtualenvs/",
-    "venv": "vboxui",
+    "venvPath": ".",
+    "venv": "venv",
     "typeCheckingMode": "standard"
 }
