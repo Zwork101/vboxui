@@ -40,18 +40,18 @@ class MetricDisplay(Container):
 
 
 class VM(Container):
-	"""
+	DEFAULT_CSS = """
 	.menu {
 	  dock: left;
 	  width: 20%;
-	  height: 100%;
-	  border: 1px red solid;
+	  height: auto;
+	  border: round red;
 	}
 
 	.information {
 	  width: 80%;
-	  height: 100%;
-	  border: 1px blue solid;
+	  height: auto;
+	  border: round blue;
 	}
 	"""
 
@@ -62,22 +62,30 @@ class VM(Container):
 	metric_network_rx = reactive(Metric(0.0, 1, "B/s"))
 	metric_network_tx = reactive(Metric(0.0, 1, "B/s"))
 
+	vbox_name = reactive("")
+	vbox_cpu_count = reactive(0)
+	vbox_memory = reactive(0)
+	vbox_health = reactive(MachineHealth.ERROR)
+
 	def __init__(self, machine: Machine, api: VBoxAPI, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+
 		self._vbox = machine
 		self._api = api
-		self.vbox_name: str = machine.name
+		self.set_reactive(self.__class__.vbox_name, machine.name)
 		self.vbox_os: str = machine.os_type_id
-		self.vbox_cpu_count = machine.cpu_count
-		self.vbox_memory = machine.memory_size
-		self.vbox_health = machine.health
+		self.set_reactive(self.__class__.vbox_cpu_count, machine.cpu_count)
+		self.set_reactive(self.__class__.vbox_memory, machine.memory_size)
+		self.set_reactive(self.__class__.vbox_health, machine.health)  # pyright: ignore [reportArgumentType]
 		self.vbox_networks = machine.network_adapters
 		self.vbox_drives = []
+
+		self._latest_state = machine.get_last_state_change_dt()
+		self.set_interval(2, self.poll_status)
 
 		for attachment in machine.mediums:
 			if attachment.type == 'HardDisk':
 				self.vbox_drives.append(attachment)
-
-		super().__init__(*args, **kwargs)
 
 	def compose(self) -> ComposeResult:
 		with Horizontal(classes="instance"):
@@ -91,12 +99,13 @@ class VM(Container):
 				with Vertical():
 					with Horizontal():
 						with Vertical():
-							yield Markdown(f"**Name:** {self.vbox_name}")
-							yield Markdown(f"**Operating System:** {self.vbox_os}")
-							yield Markdown(f"**Health:** {self.vbox_health}")
+							yield Markdown(f"**Name:** {self.vbox_name}", id="vbox-name")
+							yield Markdown(f"**Operating System:** {self.vbox_os}", id="vbox-os")
+							status = MachineHealth._value2member_map_[self.vbox_health].name
+							yield Markdown(f"**Health:** {status}", id="vbox-health")
 						with Vertical():
-							yield Markdown(f"**CPU Cores**: {self.vbox_cpu_count}")
-							yield Markdown(f"**Total Memory**: {self.vbox_memory}")
+							yield Markdown(f"**CPU Cores**: {self.vbox_cpu_count}", id="vbox-cores")
+							yield Markdown(f"**Total Memory**: {self.vbox_memory} MB", id="vbox-memory")
 							yield Markdown(f"**Test**: test")
 					with Horizontal():
 						with Vertical():
@@ -132,6 +141,36 @@ class VM(Container):
 		self._vbox.delete()
 		if self.parent:
 			self.parent.refresh(layout=True, recompose=True)
+
+	def poll_status(self):
+		latest_state = self._vbox.get_last_state_change_dt()
+
+		if latest_state > self._latest_state:
+			self._latest_state = latest_state
+			self.vbox_name = self._vbox.name
+			self.vbox_cpu_count = self._vbox.cpu_count
+
+			if self.vbox_health != MachineHealth.RUNNING and \
+				self._vbox.health == MachineHealth.RUNNING:
+				logging.info("Identified new status")
+				logging.info(f"{self._api.performance_collector.setup_metrics(None, self._vbox, 2, 1)}")
+				logging.info(f"{self._api.performance_collector.enable_metrics(None, self._vbox)}")
+
+			self.vbox_health = self._vbox.health
+			self.vbox_memory = self._vbox.memory_size
+
+	def watch_vbox_name(self, name: str):
+		self.query_exactly_one("#vbox-name", Markdown).update(f"**Name:** {name}")
+
+	def watch_vbox_cpu_count(self, count: int):
+		self.query_exactly_one("#vbox-cores", Markdown).update(f"**CPU Cores**: {count}")
+
+	def watch_vbox_health(self, health: int):
+		status = MachineHealth._value2member_map_[health].name
+		self.query_exactly_one("#vbox-health", Markdown).update(f"**Health:** {status}")
+
+	def watch_vbox_memory(self, memory: int):
+		self.query_exactly_one("#vbox-memory", Markdown).update(f"**Total Memory**: {memory} MB")
 
 	def watch_metric_cpu_user_load(self, metric: Metric):
 		try:
