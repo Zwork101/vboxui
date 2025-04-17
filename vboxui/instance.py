@@ -1,4 +1,5 @@
 import logging
+from textual import on
 from textual.css.query import NoMatches, TooManyMatches, WrongType
 from .models import Metric
 
@@ -94,7 +95,7 @@ class VM(Container):
 				yield Button("Stop VM", variant="primary", disabled=self.vbox_health != MachineHealth.RUNNING, id='stop-btn')
 				yield Button("VM Settings", variant="warning")
 				yield Button("Take Snapshot", variant="warning")
-				yield Button("Delete VM", variant="error")
+				yield Button("Delete VM", variant="error", id="delete-btn")
 			with Container(classes="information"):
 				with Vertical():
 					with Horizontal():
@@ -117,30 +118,25 @@ class VM(Container):
 							yield MetricDisplay("Network Rx Usage", self.metric_network_rx, id="net-rx-metric")
 							yield MetricDisplay("Network Tx Usage", self.metric_network_tx, id="net-tx-metric")
 
-
-	def on_button_pressed(self, event: Button.Pressed) -> None:
-		logging.info(event.button.id)
-		if event.button.id == "start-btn":
-			self.start_vm()
-		elif event.button.id == "stop-btn":
-			self.stop_vm()
-
+	@on(Button.Pressed, "#start-btn")
 	def start_vm(self):
 		logging.info("Starting VM")
 		self._vbox.start()
 		self.query("#start-btn").only_one(Button).disabled = True
 		self.query("#stop-btn").only_one(Button).disabled = False
 
+	@on(Button.Pressed, "#stop-btn")
 	def stop_vm(self):
 		logging.info("Stopping VM")
 		self._vbox.stop()
 		self.query("#start-btn").only_one(Button).disabled = False
 		self.query("#stop-btn").only_one(Button).disabled = True
 
+	@on(Button.Pressed, "#delete-btn")
 	def delete_vm(self):
 		self._vbox.delete()
-		if self.parent:
-			self.parent.refresh(layout=True, recompose=True)
+		self.parent.parent.parent.parent.vms.remove(self._vbox)
+		self.parent.parent.parent.parent.refresh(layout=True, recompose=True)
 
 	def poll_status(self):
 		latest_state = self._vbox.get_last_state_change_dt()

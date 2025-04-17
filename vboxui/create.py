@@ -1,16 +1,21 @@
 from getpass import getuser
 import logging
+import os
 from pathlib import Path
+import time
 
 import psutil
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.validation import ValidationResult, Validator
-from textual.widgets import Button, Header, Input, Label, Markdown, Static, TabPane, TabbedContent, Tabs
+from textual.validation import Integer, ValidationResult, Validator
+from textual.widgets import Button, Header, Input, Label, Markdown, Static, Tab, TabPane, TabbedContent, Tabs
 from textual_slider import Slider
+from textual_fspicker import SelectDirectory, FileOpen
 from vbox_api import VBoxAPI
+from vbox_api.constants import AccessMode, MediumDeviceType, MediumState, MediumVariant
+from vbox_api.models import Machine
 
 
 class UniqueName(Validator):
@@ -48,7 +53,7 @@ class PathExists(Validator):
             return self.failure("Path does not exist")
 
 
-class CreateModal(ModalScreen):
+class CreateModal(ModalScreen[Machine]):
     DEFAULT_CSS = """
     CreateModal {
         align: center middle;
@@ -86,6 +91,14 @@ class CreateModal(ModalScreen):
         width: 5fr;
     }
 
+    .surround > Input {
+        width: 4fr;
+    }
+
+    .surround > Button {
+        width: 2fr;
+    }
+
     .error-message {
         display: none;
     }
@@ -112,7 +125,7 @@ class CreateModal(ModalScreen):
     tab_form = [
         ("tab-init", ["name-input", "parent-input", "iso-input"]),
         ("tab-hardware", ["memory-input", "cpu-input"]),
-        ("tab-storage", ["size-input"])
+        ("tab-storage", ["slocation-input", "ssize-input"])
     ]
 
     def __init__(self, api: VBoxAPI, *args, **kwargs):
@@ -127,7 +140,9 @@ class CreateModal(ModalScreen):
             "parent-input": f"/home/{getuser()}/VirtualBox VMs",
             "iso-input": "",
             "memory-input": max(self._max_memory // 4, 500),
-            "cpu-input": 1
+            "cpu-input": 1,
+            "slocation-input": f"/home/{getuser()}/VirtualBox VMs",
+            "ssize-input": "4"
         }
     
     def compose(self) -> ComposeResult:
@@ -143,12 +158,16 @@ class CreateModal(ModalScreen):
                     with Vertical(classes="form-option"):
                         with Horizontal():
                             yield Static("VM Directory")
-                            yield Input(self.form_data['parent-input'], id="parent-input", validators=[PathExists(target_directory=True)], validate_on=["changed"])
+                            with Horizontal(classes="surround"):
+                                yield Input(self.form_data['parent-input'], id="parent-input", validators=[PathExists(target_directory=True)], validate_on=["changed"])
+                                yield Button("Select Directory", id="parent-btn", classes="filepicker")
                         yield Static(f"", classes="error-message", id="error-parent")
                     with Vertical(classes="form-option"):
                         with Horizontal():
                             yield Static("VM ISO Image")
-                            yield Input(self.form_data['iso-input'], id="iso-input", validators=[PathExists(target_directory=False)], validate_on=["changed"])
+                            with Horizontal(classes="surround"):
+                                yield Input(self.form_data['iso-input'], id="iso-input", validators=[PathExists(target_directory=False)], validate_on=["changed"])
+                                yield Button("Select File", id="iso-btn", classes="filepicker")
                         yield Static(f"", classes="error-message", id="error-iso")
                 with TabPane("Hardware", disabled=True, id="tab-hardware"):
                     with Vertical(classes="form-option"):
@@ -167,6 +186,19 @@ class CreateModal(ModalScreen):
                                 yield Slider(min=1, max=self._max_cpu_cores, step=1, id="cpu-input", value=self.form_data["cpu-input"])
                                 yield Static(str(self._max_cpu_cores))
                         yield Static(f"", classes="error-message", id="error-memory")
+                with TabPane("Storage", disabled=True, id="tab-storage"):
+                    with Vertical(classes="form-option"):
+                        with Horizontal():
+                            yield Static("Storage Location")
+                            with Horizontal(classes="surround"):
+                                yield Input(self.form_data['slocation-input'], id="slocation-input", validators=[PathExists(target_directory=True)], validate_on=["changed"])
+                                yield Button("Select Directory", id="slocation-btn", classes="filepicker")
+                        yield Static(f"", classes="error-message", id="error-slocation")
+                    with Vertical(classes="form-option"):
+                        with Horizontal():
+                            yield Static("Storage Size (MB)")
+                            yield Input(self.form_data['ssize-input'], id="ssize-input", type="integer", validators=[Integer(4, psutil.disk_usage("/").free // 1_000_000)], validate_on=["changed"])
+                        yield Static(f"", classes="error-message", id="error-ssize")
             with Horizontal(id="options"):
                 yield Button("Continue", variant="primary", id="continue-btn", disabled=True)
                 yield Button("Cancel", variant="error", id="cancel-btn")
@@ -174,6 +206,22 @@ class CreateModal(ModalScreen):
     def on_mount(self):
         # self.query_one(TabbedContent).select()
         self.query_exactly_one("#name-input", Input).focus()
+        
+
+    @on(Button.Pressed, ".filepicker")
+    @work
+    async def select_directory(self, event: Button.Pressed):
+        attribute = event.button.id
+        if attribute is None:
+            logging.warning("File picker lacks ID")
+            return
+        attribute = attribute.split("-")[0]
+        if str(event.button.label).startswith("Directory"):
+            opened = await self.app.push_screen_wait(SelectDirectory(self.form_data[f"{attribute}-input"]))
+        else:
+            opened = await self.app.push_screen_wait(FileOpen(self.form_data[f"{attribute}-input"]))
+        if opened:
+            self.query_exactly_one(f"#{attribute}-input", Input).value = str(opened)
 
     @on(Slider.Changed)
     def update_slider(self, event: Slider.Changed):
@@ -205,9 +253,10 @@ class CreateModal(ModalScreen):
         next_tab = self.tab_form.index((tab_name, tab_inputs)) + 1
 
         if next_tab == len(self.tab_form):
-            return  # TODO: Make VM
+            self.create_machine()
 
         self.query_exactly_one(TabbedContent).active = self.tab_form[next_tab][0]
+        self.check_active_tab(self.query_exactly_one(TabbedContent).active_pane)  # pyright: ignore [reportArgumentType]
 
     @on(Button.Pressed, "#cancel-btn")
     def stop_setup(self, event: Button.Pressed):
@@ -235,6 +284,12 @@ class CreateModal(ModalScreen):
             logging.warning("Active tab not found or has no ID")
             return
 
+        self.check_active_tab(active_tab, event)
+
+    def check_active_tab(self, active_tab: TabPane | Tab, event: Input.Changed | None = None):
+        if active_tab.id is None:
+            return
+        
         tab_name = active_tab.id
         tab_inputs = next((t[1] for t in self.tab_form if t[0] == tab_name), None)
 
@@ -247,13 +302,62 @@ class CreateModal(ModalScreen):
         if all(self.form_data[inp] for inp in tab_inputs):
             if next_tab != len(self.tab_form):
                 self.query_exactly_one("#" + self.tab_form[next_tab][0], TabPane).disabled = False
-            
-            if event.input.id in tab_inputs:
+
+            if event and event.input.id in tab_inputs:
                 logging.info(self.form_data, tab_inputs)
                 self.query_exactly_one("#continue-btn", Button).disabled = False
         else:
             if next_tab != len(self.tab_form):
                 self.query_exactly_one("#" + self.tab_form[next_tab][0], TabPane).disabled = True
 
-            if event.input.id in tab_inputs:
+            if event and event.input.id in tab_inputs:
                 self.query_exactly_one("#continue-btn", Button).disabled = True
+
+    def create_machine(self):
+        unattended = self._api.ctx.api.create_unattended_installer()
+        unattended.iso_path = self.form_data['iso-input']
+        logging.info(unattended.iso_path)
+        # unattended.detect_iso_os()
+        settings_path = self._api.compose_machine_filename(self.form_data['name-input'], "/", "", self.form_data['parent-input'])
+        architecture = self._api.host.architecture
+        machine: Machine = self._api.create_machine(
+            settings_path, self.form_data['name-input'], architecture, ["/"], 'Linux26_64', "", "", "", ""  # Try and use detect OS type
+        )
+        machine.apply_defaults("")
+        self._api.register_machine(machine)
+
+        with machine.with_lock(save_settings=True, force_unlock=True) as mut_machine:
+            mut_machine.cpu_count = self.form_data['cpu-input']
+            mut_machine.memory_size = self.form_data['memory-input']
+            medium = self._api.create_medium(
+                "", 
+                os.path.join(self.form_data['slocation-input'], self.form_data['name-input'] + '.vdi'), 
+                AccessMode.READ_WRITE, 
+                MediumDeviceType.HARD_DISK
+            )
+            logging.info(self.form_data['ssize-input'])
+            progress = medium.create_base_storage(((int(self.form_data['ssize-input']) * 1_000_000) // 512) * 512, ["Standard"])
+        
+            progress.wait_for_completion(10)
+            medium.refresh_state()
+            logging.info(medium.state)
+
+            iso_medium = self._api.open_medium(
+                self.form_data['iso-input'],
+                "DVD",
+                AccessMode.READ_ONLY,
+                True
+            )
+
+            mut_machine.attach_medium(
+                iso_medium,
+                "IDE"
+            )
+
+            mut_machine.attach_medium(
+                medium,
+                "SATA"
+            )
+        
+        self.dismiss(machine)
+    

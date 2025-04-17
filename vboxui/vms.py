@@ -1,6 +1,6 @@
 import logging
 
-from textual import on
+from textual import on, work
 from textual.containers import Horizontal
 
 from vboxui.create import CreateModal
@@ -74,11 +74,13 @@ class VMList(Screen):
 					yield VM(vm, self.api, id= "ID" + vm.id)
 
 	@on(Button.Pressed, "#create-btn")
-	def create_vm(self, event: Button.Pressed):
-		self.app.push_screen(
-			CreateModal(self.api),
-			callback=lambda x: logging.warning("Create Done" + str(x))
+	@work()
+	async def create_vm(self, event: Button.Pressed):
+		m = await self.app.push_screen_wait(
+			CreateModal(self.api)		
 		)
+		self.vms.append(m)
+		await self.recompose()
 
 	def on_mount(self):
 		self.title = "VBoxUI"
