@@ -253,7 +253,7 @@ class CreateModal(ModalScreen[Machine]):
         next_tab = self.tab_form.index((tab_name, tab_inputs)) + 1
 
         if next_tab == len(self.tab_form):
-            self.create_machine()
+            return self.create_machine()
 
         self.query_exactly_one(TabbedContent).active = self.tab_form[next_tab][0]
         self.check_active_tab(self.query_exactly_one(TabbedContent).active_pane)  # pyright: ignore [reportArgumentType]

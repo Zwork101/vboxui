@@ -2,6 +2,7 @@ import logging
 
 from textual import on, work
 from textual.containers import Horizontal
+from textual.css.query import NoMatches
 
 from vboxui.create import CreateModal
 from .models import Metric
@@ -20,6 +21,10 @@ class VMList(Screen):
 
 	#options {
 	  height: 1fr;
+	}
+
+	#options > * {
+	  margin: 1 1 0 1
 	}
 
 	#vms {
@@ -41,7 +46,10 @@ class VMList(Screen):
 	def query_metrics(self):
 		vm_summary = {}
 		for vm in self.vms:
-			vm_pane: VM = self.query("#ID" + vm.id).first(VM)
+			try:
+				vm_pane: VM = self.query("#ID" + vm.id).first(VM)
+			except NoMatches:
+				continue
 			raw_metrics = self.api.performance_collector.query_metrics_data(None, vm)
 			summary = {}
 			for name, _, unit, scale, _, _, _, value in zip(*(raw_metrics[key] for key in raw_metrics)):
@@ -68,10 +76,19 @@ class VMList(Screen):
 		yield Header()
 		with Horizontal(id="options"):
 			yield Button("Create VM", variant="success", id="create-btn")
+			yield Button("Manage Mediums", variant="warning", id="manage-medium", disabled=True)
+			yield Button("Manage Networks", variant="warning", id="manage-net", disabled=True)
+			yield Button("Manage Logs", variant="warning", id="manage-logs", disabled=True)
+			yield Button("Exit VboxUI", variant="error", id="leave-btn")
+
 		with TabbedContent(id="vms"):
 			for vm in self.vms:
 				with TabPane(vm.name):
 					yield VM(vm, self.api, id= "ID" + vm.id)
+
+	@on(Button.Pressed, "#leave-btn")
+	def exit_app(self):
+		self.app.exit()
 
 	@on(Button.Pressed, "#create-btn")
 	@work()
