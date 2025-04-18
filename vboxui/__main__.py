@@ -6,12 +6,18 @@ import logging
 from .login import Login
 from .vms import VMList
 
-logging.basicConfig(filename='app.log', level=logging.INFO, filemode='w', format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    filename="app.log",
+    level=logging.INFO,
+    filemode="w",
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
 
 class VboxApp(App):
 
     def on_mount(self) -> None:
-        
+
         self.install_screen(Login(), name="login")
 
         def setup_screens(api):
@@ -19,9 +25,13 @@ class VboxApp(App):
             self.push_screen("list")
 
         self.push_screen("login", setup_screens)
+        #  Change the main screen to login. Login will then switch to the VM list page when done
 
 
-if __name__ == "__main__":
+def start_app():
     start_vboxwebsrv()
     app = VboxApp()
     app.run()
+
+if __name__ == "__main__":
+    start_app()

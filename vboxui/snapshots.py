@@ -66,14 +66,20 @@ class TakeSnapshot(ModalScreen):
                 yield TextArea(id="snap-desc")
             with Horizontal():
                 yield Static("Pause for Snapshot")
-                yield Switch(id="snap-pause", disabled=self._vbox.health != MachineHealth.RUNNING, value=False)
+                yield Switch(
+                    id="snap-pause",
+                    disabled=self._vbox.health != MachineHealth.RUNNING,
+                    value=False,
+                )
             with Horizontal(id="btns"):
-                yield Button("Take Snapshot", id="take-btn", disabled=True, variant="success")
+                yield Button(
+                    "Take Snapshot", id="take-btn", disabled=True, variant="success"
+                )
                 yield Button("Cancel Snapshot", id="cancel-btn", variant="error")
 
-    
     @on(Input.Changed, "#snap-name")
     def check_name(self, event: Input.Changed):
+        # Only allow submit if a snapshot name is provided
         if event.value:
             self.query_exactly_one("#take-btn", Button).disabled = False
         else:
@@ -85,12 +91,12 @@ class TakeSnapshot(ModalScreen):
             mut_machine.take_snapshot(
                 self.query_exactly_one("#snap-name", Input).value,
                 self.query_exactly_one("#snap-desc", TextArea).text,
-                not self.query_exactly_one("#snap-pause", Switch).value
+                not self.query_exactly_one("#snap-pause", Switch).value,
             )
-            for i in range(20):
+            for _ in range(20):
                 if mut_machine.health != MachineHealth.WARNING:
-                    break
-                time.sleep(.5)
+                    break  # Must wait until MachineHealth is not WARNING before unlocking the VM. Learned this the hard way.
+                time.sleep(0.5)
             else:
                 raise TimeoutError("Unable to take snapshot")
         self.dismiss()
@@ -140,10 +146,14 @@ class ListSnapshots(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("Select a snapshot to revert to")
-            yield DataTable(fixed_columns=6, cursor_type="row", zebra_stripes=True, id="snapshots")
+            yield DataTable(
+                fixed_columns=6, cursor_type="row", zebra_stripes=True, id="snapshots"
+            )  # TODO: Will add better selection system later, but this is solid right now
             with Horizontal():
                 yield Input(disabled=True, id="selected-snapshot")
-                yield Button("Perform Revert", id="revert-btn", variant="success", disabled=True)
+                yield Button(
+                    "Perform Revert", id="revert-btn", variant="success", disabled=True
+                )
                 yield Button("Cancel Revert", id="cancel-btn", variant="error")
 
     @on(Button.Pressed, "#cancel-btn")
@@ -152,10 +162,7 @@ class ListSnapshots(ModalScreen):
 
     @on(Button.Pressed, "#revert-btn")
     def return_snapshot(self, event: Button.Pressed):
-        self.dismiss(
-            self.snapshots[self._selected_snapshot]
-        )
-
+        self.dismiss(self.snapshots[self._selected_snapshot])
 
     @on(DataTable.RowSelected, "#snapshots")
     def select_snapshot(self, event: DataTable.RowSelected):
@@ -163,7 +170,6 @@ class ListSnapshots(ModalScreen):
         snap_display.value = event.data_table.get_row_at(event.cursor_row)[0]
         self.query_exactly_one("#revert-btn", Button).disabled = False
         self._selected_snapshot = snap_display.value
-
 
     @classmethod
     def flatten_snapshots(cls, snapshot) -> list:
@@ -173,25 +179,26 @@ class ListSnapshots(ModalScreen):
             current_list += cls.flatten_snapshots(child)
         return current_list
 
-
     def on_mount(self):
         snapshot_table = self.query_exactly_one("#snapshots", DataTable)
-        snapshot_table.add_columns("id", "name", "description", "online", "parent", "timestamp")
+        snapshot_table.add_columns(
+            "id", "name", "description", "online", "parent", "timestamp"
+        )
         try:
-            snapshots = self.flatten_snapshots(
-                self._vbox.find_snapshot("")
-            )
+            snapshots = self.flatten_snapshots(self._vbox.find_snapshot(""))
         except Fault:
             return
 
         for snapshot in snapshots:
             self.snapshots[snapshot.id] = snapshot
-            timestamp = datetime.fromtimestamp(snapshot.time_stamp / 1000).strftime("%m/%-d/%Y %H:%M")
+            timestamp = datetime.fromtimestamp(snapshot.time_stamp / 1000).strftime(
+                "%m/%-d/%Y %H:%M"
+            )
             snapshot_table.add_row(
                 snapshot.id,
-                snapshot.name, 
-                snapshot.description, "Online" if snapshot.online else "Offline", 
+                snapshot.name,
+                snapshot.description,
+                "Online" if snapshot.online else "Offline",
                 "-" if not snapshot.parent else snapshot.parent.name,
-                timestamp
+                timestamp,
             )
-        

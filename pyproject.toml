@@ -1,0 +1,30 @@
+[project]
+name = "vboxui"
+version = "0.1.0"
+authors = [
+  { name="Nathan Zilora", email="zwork101@gmail.com" },
+]
+description = "A small example package"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+dynamic = ["dependencies"]
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/Zwork101/vboxui"
+Issues = "https://github.com/Zwork101/vboxui/issues"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[project.scripts]
+vboxui = "vboxui:__main__.start_app"

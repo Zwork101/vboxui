@@ -63,7 +63,9 @@ class Login(Screen):
             with Vertical(classes="login"):
                 with Horizontal():
                     yield Static("Username", classes="form-label", id="username-text")
-                    yield Input(placeholder=getuser(), classes="form-input", id="username")
+                    yield Input(
+                        placeholder=getuser(), classes="form-input", id="username"
+                    )
                 with Horizontal():
                     yield Static("Password", classes="form-label", id="password-text")
                     yield Input(password=True, classes="form-input", id="password")
@@ -98,10 +100,7 @@ class Login(Screen):
 
             else:
                 logging.info("Dismissing")
-                self.dismiss(
-                    build_api(username, password.value)
-                )
-
+                self.dismiss(build_api(username, password.value))  # We don't check if password is wrong yet
 
         elif event.button.id == "quit":
             logging.warning("Quitting...")
